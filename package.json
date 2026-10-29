@@ -1,0 +1,14 @@
+{
+  "name": "outlook-reply-tracker",
+  "version": "1.0.0",
+  "description": "Outlook add-in to track unreplied emails",
+  "scripts": {
+    "start": "office-addin-dev-certs install --machine && http-server . --ssl --cert ~/.office-addin-dev-certs/localhost.crt --key ~/.office-addin-dev-certs/localhost.key -p 3000 -c-1 --cors",
+    "start:win": "npx office-addin-dev-certs install --machine && npx http-server . --ssl --cert %USERPROFILE%/.office-addin-dev-certs/localhost.crt --key %USERPROFILE%/.office-addin-dev-certs/localhost.key -p 3000 -c-1 --cors",
+    "certs": "office-addin-dev-certs install --machine"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "office-addin-dev-certs": "^1.12.0"
+  }
+}

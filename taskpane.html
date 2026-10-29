@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reply Tracker</title>
+
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js" crossorigin="anonymous"></script>
+  <!-- Office.js must load from Microsoft CDN -->
+  <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <!-- MSAL -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/msal.js/1.4.18/msal.min.js" crossorigin="anonymous"></script>
+
+  <style>
+    :root {
+      --bg: #f7f6f3;
+      --surface: #ffffff;
+      --border: #e4e2dc;
+      --fg: #1c1b18;
+      --fg-muted: #6b6860;
+      --accent: #0f6cbd;
+      --accent-light: #e8f2fb;
+      --warn: #c45c1a;
+      --warn-light: #fdf1ea;
+      --ok: #1e7d4a;
+      --ok-light: #e8f5ee;
+      --overdue: #a31b1b;
+      --overdue-light: #fdeaea;
+      --shadow: 0 1px 3px rgba(0,0,0,.07);
+      --radius: 8px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1f1f1f;
+        --surface: #2b2b2b;
+        --border: #3d3d3d;
+        --fg: #f0ede6;
+        --fg-muted: #9b9690;
+        --accent: #479ef5;
+        --accent-light: #0f2d4a;
+        --warn: #e07840;
+        --warn-light: #2a1a0e;
+        --ok: #3aad6a;
+        --ok-light: #0d2418;
+        --overdue: #e05555;
+        --overdue-light: #2a0f0f;
+        color-scheme: dark;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-title {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .header-sub {
+      font-size: 11px;
+      color: var(--fg-muted);
+      font-weight: 400;
+      margin-left: 6px;
+    }
+
+    .btn-icon {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--fg-muted);
+      padding: 5px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      transition: color .15s, background .15s;
+    }
+    .btn-icon:hover { color: var(--fg); background: var(--border); }
+    .btn-icon:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Content ── */
+    .content {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ── Sign-in screen ── */
+    .signin-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      text-align: center;
+      gap: 12px;
+    }
+
+    .signin-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-light);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+    }
+
+    .signin-screen h2 { font-size: 15px; font-weight: 600; }
+    .signin-screen p { font-size: 12px; color: var(--fg-muted); max-width: 240px; line-height: 1.6; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 20px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity .15s;
+      margin-top: 4px;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    /* ── Filters ── */
+    .filters {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filter-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--fg-muted);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .search-wrap { flex: 1; position: relative; min-width: 100px; }
+    .search-wrap svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--fg-muted); pointer-events: none; }
+    #search {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 5px 8px 5px 26px;
+      border-radius: 20px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    #search:focus { border-color: var(--accent); }
+    #search::placeholder { color: var(--fg-muted); }
+
+    /* ── Email cards ── */
+    .email-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .email-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: box-shadow .15s, border-color .15s;
+      position: relative;
+    }
+    .email-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    .email-card.snoozed { opacity: .5; }
+    .email-card.urgent { border-left: 3px solid var(--overdue); }
+    .email-card.soon   { border-left: 3px solid var(--warn); }
+
+    .card-from {
+      font-weight: 600;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: 50px;
+    }
+
+    .card-subject {
+      font-size: 12px;
+      color: var(--fg-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-family: 'DM Mono', monospace;
+      white-space: nowrap;
+    }
+    .badge-to      { background: var(--accent-light); color: var(--accent); }
+    .badge-cc      { background: var(--border);        color: var(--fg-muted); }
+    .badge-age     { color: var(--fg-muted); font-size: 10px; font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; }
+    .badge-overdue { background: var(--overdue-light); color: var(--overdue); }
+    .badge-warn    { background: var(--warn-light);    color: var(--warn); }
+
+    .card-actions {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      gap: 2px;
+    }
+
+    .btn-card {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--fg-muted);
+      padding: 3px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      font-size: 10px;
+      transition: color .15s, background .15s;
+    }
+    .btn-card:hover { color: var(--fg); background: var(--bg); }
+
+    /* ── Empty / Loading states ── */
+    .state-box {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--fg-muted);
+    }
+    .state-box svg { opacity: .3; margin-bottom: 10px; }
+    .state-box .big { font-size: 14px; font-weight: 500; color: var(--fg); opacity: .7; margin-bottom: 4px; }
+    .state-box p { font-size: 12px; }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 40px 20px;
+      color: var(--fg-muted);
+      font-size: 12px;
+    }
+
+    /* ── Error banner ── */
+    .error-banner {
+      background: var(--overdue-light);
+      color: var(--overdue);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    /* ── Config notice ── */
+    .config-notice {
+      background: var(--warn-light);
+      color: var(--warn);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .config-notice code {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      background: rgba(0,0,0,.08);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    /* ── Days ago label ── */
+    .days-label { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">
+    Reply Tracker
+    <span class="header-sub" id="count-label"></span>
+  </div>
+  <button class="btn-icon" id="refresh-btn" title="Refresh" aria-label="Refresh">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>
+  </button>
+  <button class="btn-icon" id="signout-btn" title="Sign out" aria-label="Sign out" hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </button>
+</div>
+
+<div class="content" id="content">
+  <!-- filled by JS -->
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG — paste your Azure AD App Client ID here
+//  See SETUP.md for how to create one (5 min)
+// ─────────────────────────────────────────────
+const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+const LOOKBACK_DAYS = 60; // how far back to look for unreplied emails
+
+// ─────────────────────────────────────────────
+
+const SCOPES = ['Mail.Read', 'User.Read'];
+const SNOOZE_KEY = 'reply-tracker-snoozed';
+
+let msalInstance = null;
+let currentAccount = null;
+let allEmails = [];
+let snoozed = new Set();
+let filterMode = 'to'; // 'to' | 'cc' | 'all'
+let searchQ = '';
+
+// ── Load snoozed from storage ──
+try {
+  const raw = localStorage.getItem(SNOOZE_KEY);
+  if (raw) snoozed = new Set(JSON.parse(raw));
+} catch(e) {}
+
+function saveSnoozed() {
+  try { localStorage.setItem(SNOOZE_KEY, JSON.stringify([...snoozed])); } catch(e) {}
+}
+
+// ── Office init ──
+Office.onReady(function(info) {
+  if (CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+    showConfigNotice();
+    return;
+  }
+  initMsal();
+});
+
+function showConfigNotice() {
+  document.getElementById('content').innerHTML = `
+    <div class="config-notice">
+      <strong>Setup needed:</strong> Open <code>taskpane.html</code>, find <code>CLIENT_ID</code> near the top, and replace <code>YOUR_CLIENT_ID_HERE</code> with your Azure AD App ID.<br><br>
+      See <code>SETUP.md</code> in the project folder for step-by-step instructions (takes about 5 minutes).
+    </div>`;
+}
+
+function initMsal() {
+  msalInstance = new Msal.UserAgentApplication({
+    auth: {
+      clientId: CLIENT_ID,
+      authority: 'https://login.microsoftonline.com/common',
+      redirectUri: 'https://sabit12.github.io/reply-tracker/taskpane.html',
+      navigateToLoginRequestUrl: false
+    },
+    cache: {
+      cacheLocation: 'localStorage',
+      storeAuthStateInCookie: true
+    }
+  });
+
+  msalInstance.handleRedirectCallback(() => {});
+
+  currentAccount = msalInstance.getAccount();
+  if (currentAccount) {
+    document.getElementById('signout-btn').hidden = false;
+    document.getElementById('refresh-btn').disabled = false;
+    loadEmails();
+  } else {
+    showSignIn();
+  }
+}
+
+// ── Sign in / out ──
+function showSignIn() {
+  document.getElementById('content').innerHTML = `
+    <div class="signin-screen">
+      <div class="signin-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+      </div>
+      <h2>Sign in to Microsoft</h2>
+      <p>Connect your Outlook account to see emails addressed to you that haven't been replied to.</p>
+      <button class="btn-primary" id="signin-btn">Sign in with Microsoft</button>
+    </div>`;
+  document.getElementById('signin-btn').addEventListener('click', signIn);
+}
+
+async function signIn() {
+  try {
+    await msalInstance.loginPopup({ scopes: SCOPES });
+    currentAccount = msalInstance.getAccount();
+    document.getElementById('signout-btn').hidden = false;
+    loadEmails();
+  } catch(e) {
+    if (e.errorCode !== 'user_cancelled') showError('Sign-in failed: ' + (e.message || e));
+  }
+}
+
+document.getElementById('signout-btn').addEventListener('click', () => {
+  msalInstance.logout();
+});
+
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  if (currentAccount) loadEmails();
+});
+
+// ── Graph helpers ──
+async function getToken() {
+  try {
+    const res = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: currentAccount });
+    return res.accessToken;
+  } catch(e) {
+    const res = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
+    return res.accessToken;
+  }
+}
+
+async function graphGet(url, token) {
+  const res = await fetch('https://graph.microsoft.com/v1.0' + url, {
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
+  });
+  if (!res.ok) throw new Error(`Graph error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+// ── Load unreplied emails ──
+async function loadEmails() {
+  showLoading();
+  try {
+    const token = await getToken();
+
+    // 1. Get user's email address
+    const me = await graphGet('/me?$select=mail,userPrincipalName,displayName', token);
+    const myEmail = (me.mail || me.userPrincipalName || '').toLowerCase();
+
+    // 2. Get inbox messages from last N days
+    const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
+    let inboxUrl = `/me/mailFolders/Inbox/messages?$filter=receivedDateTime ge ${since} and isDraft eq false` +
+      `&$select=id,subject,from,receivedDateTime,conversationId,toRecipients,ccRecipients,importance` +
+      `&$top=200&$orderby=receivedDateTime desc`;
+
+    const inboxData = await graphGet(inboxUrl, token);
+    const inbox = inboxData.value || [];
+
+    // 3. Get sent items conversation IDs from same window
+    const sentData = await graphGet(
+      `/me/mailFolders/SentItems/messages?$filter=sentDateTime ge ${since}&$select=conversationId&$top=500`,
+      token
+    );
+    const sentConvIds = new Set((sentData.value || []).map(m => m.conversationId).filter(Boolean));
+
+    // 4. Filter: must be addressed to user (To or CC), must not have a sent reply
+    allEmails = inbox.filter(msg => {
+      const inTo = (msg.toRecipients || []).some(r => (r.emailAddress?.address || '').toLowerCase() === myEmail);
+      const inCc = (msg.ccRecipients || []).some(r => (r.emailAddress?.address || '').toLowerCase() === myEmail);
+      const replied = sentConvIds.has(msg.conversationId);
+      return (inTo || inCc) && !replied;
+    }).map(msg => {
+      const inTo = (msg.toRecipients || []).some(r => (r.emailAddress?.address || '').toLowerCase() === myEmail);
+      return { ...msg, _inTo: inTo, _inCc: !inTo };
+    });
+
+    render();
+  } catch(e) {
+    showError(e.message || String(e));
+  }
+}
+
+// ── Render ──
+function render() {
+  let visible = allEmails.filter(e => {
+    if (filterMode === 'to' && !e._inTo) return false;
+    if (filterMode === 'cc' && !e._inCc) return false;
+    if (snoozed.has(e.id)) return false;
+    if (searchQ) {
+      const q = searchQ.toLowerCase();
+      const from = (e.from?.emailAddress?.name || e.from?.emailAddress?.address || '').toLowerCase();
+      const sub = (e.subject || '').toLowerCase();
+      if (!from.includes(q) && !sub.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sort by urgency (older = more urgent first, importance high first)
+  visible.sort((a, b) => {
+    if (a.importance === 'high' && b.importance !== 'high') return -1;
+    if (b.importance === 'high' && a.importance !== 'high') return 1;
+    return new Date(a.receivedDateTime) - new Date(b.receivedDateTime);
+  });
+
+  const content = document.getElementById('content');
+  const total = allEmails.filter(e => !snoozed.has(e.id)).length;
+  const toCount = allEmails.filter(e => e._inTo && !snoozed.has(e.id)).length;
+
+  document.getElementById('count-label').textContent =
+    total > 0 ? `${total} unreplied` : '';
+
+  let html = `<div class="filters">
+    <div class="search-wrap">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="search" placeholder="Search…" value="${escHtml(searchQ)}" aria-label="Search emails">
+    </div>
+    <button class="filter-btn${filterMode==='to'?' active':''}" data-filter="to">Direct (${toCount})</button>
+    <button class="filter-btn${filterMode==='cc'?' active':''}" data-filter="cc">CC</button>
+    <button class="filter-btn${filterMode==='all'?' active':''}" data-filter="all">All</button>
+  </div>`;
+
+  if (visible.length === 0) {
+    const msg = total === 0
+      ? { h: 'All caught up', p: 'No unreplied emails in the last ' + LOOKBACK_DAYS + ' days.' }
+      : { h: 'No results', p: 'Try a different filter or search.' };
+    html += `<div class="state-box">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <p class="big">${msg.h}</p><p>${msg.p}</p></div>`;
+  } else {
+    html += '<div class="email-list">';
+    for (const e of visible) {
+      const age = daysSince(e.receivedDateTime);
+      const ageLabel = age === 0 ? 'today' : age === 1 ? 'yesterday' : `${age}d ago`;
+      const isUrgent = age >= 5 || e.importance === 'high';
+      const isSoon   = age >= 2 && !isUrgent;
+      const from = e.from?.emailAddress?.name || e.from?.emailAddress?.address || 'Unknown';
+      const subject = e.subject || '(no subject)';
+      const cardClass = `email-card${isUrgent ? ' urgent' : isSoon ? ' soon' : ''}`;
+      const addrBadge = e._inTo
+        ? `<span class="badge badge-to">To: me</span>`
+        : `<span class="badge badge-cc">CC: me</span>`;
+      const ageBadge = isUrgent
+        ? `<span class="badge badge-overdue days-label">${ageLabel}</span>`
+        : isSoon
+        ? `<span class="badge badge-warn days-label">${ageLabel}</span>`
+        : `<span class="badge-age days-label">${ageLabel}</span>`;
+
+      html += `<div class="${cardClass}" data-id="${e.id}" role="listitem">
+        <div class="card-actions">
+          <button class="btn-card" data-snooze="${e.id}" title="Snooze (hide from list)" aria-label="Snooze">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </button>
+        </div>
+        <div class="card-from">${escHtml(from)}</div>
+        <div class="card-subject">${escHtml(subject)}</div>
+        <div class="card-meta">${addrBadge}${ageBadge}</div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  content.innerHTML = html;
+
+  // Re-bind events
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterMode = btn.dataset.filter;
+      render();
+    });
+  });
+  const searchEl = document.getElementById('search');
+  if (searchEl) {
+    searchEl.addEventListener('input', e => { searchQ = e.target.value; render(); });
+    searchEl.focus = false; // don't steal focus on re-render
+  }
+  document.querySelectorAll('[data-snooze]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      snoozed.add(btn.dataset.snooze);
+      saveSnoozed();
+      render();
+    });
+  });
+  // Click card = open email in Outlook
+  document.querySelectorAll('.email-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('[data-snooze]')) return;
+      const msgId = card.dataset.id;
+      const msg = allEmails.find(m => m.id === msgId);
+      if (msg) {
+        // Deep link to Outlook web for the conversation
+        const url = `https://outlook.office.com/mail/inbox/id/${encodeURIComponent(msgId)}`;
+        window.open(url, '_blank');
+      }
+    });
+  });
+}
+
+// ── Helpers ──
+function daysSince(isoStr) {
+  const d = new Date(isoStr);
+  const now = new Date();
+  return Math.floor((now - d) / 86400000);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showLoading() {
+  document.getElementById('content').innerHTML = `
+    <div class="loading-box">
+      <div class="spinner"></div>
+      Checking your mailbox…
+    </div>`;
+}
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `
+    <div class="error-banner"><strong>Error:</strong> ${escHtml(msg)}</div>`;
+}
+</script>
+</body>
+</html>
